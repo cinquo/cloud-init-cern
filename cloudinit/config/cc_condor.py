@@ -16,23 +16,36 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>
 
+
 import subprocess
 import cloudinit.CloudConfig as cc
 import urllib
-from os import environ
+import os
 import re
 
-# Cloud Config module for condor 7.8.7
+
+# Cloud Config module for condor 7.8.8
+# Tested with 64 bit Condor on SLC6 machines
 def handle(_name, cfg, cloud, log, _args):
    if 'condor' in cfg:
-        print "If there is any previous version of condor, it must be removed."
+        print "Checking for previous condor versions."
 	if subprocess.call(['service','condor','stop']):
 		# If it returns 1 it means that the command failed and that condor isn't recognized
 		print "No previous condor version was found! Moving on"
+		OldVersion = False
 	else:
-		subprocess.check_call(['pkill','-f','condor'])
-            	subprocess.check_call(['rpm','-e','$(rpm -qa | grep condor)'])
-            	subprocess.check_call(['rm','/etc/yum.repos.d/condor-stable-rhel5.repo'])        
+		OldVersion = True
+		print "Condor is already installed. Applying your configuration parameters and deleting the old ones."
+		OldConfigFile_aux = subprocess.Popen(['find','/','-name','condor_config.local'], stdout=subprocess.PIPE)
+		OldConfigFile, olderr = OldConfigFile_aux.communicate()
+
+		OldConfigFile = re.sub('\n','',OldConfigFile)
+
+
+		# Comment the above lines and uncomment the following ones if you want a clean condor installation even if there is already a condor installed
+		# subprocess.check_call(['pkill','-f','condor'])
+            	# subprocess.check_call(['rpm','-e','$(rpm -qa | grep condor)'])
+            	# subprocess.check_call(['rm','/etc/yum.repos.d/condor-stable-rhel5.repo'])        
 
 	# Condor configuration file
         ConfigFile = '/root/condor_config.local'
@@ -40,30 +53,48 @@ def handle(_name, cfg, cloud, log, _args):
 	# Default CONDOR_HOST
         Host = subprocess.Popen(["hostname", "-f"], stdout=subprocess.PIPE)
         Hostname, ReleaseErr = Host.communicate()
+	Hostname = re.sub('\n','',Hostname)      
+
+	if not OldVersion:
+		CondorRepo = "http://www.cs.wisc.edu/condor/yum/repo.d/condor-stable-rhel5.repo"
+        	CondorVersion = "condor-7.8.7"	# Stable version
+
+
+ 	        # Sourcing from /etc/profile.d/condor.sh
+            	path_aux = subprocess.Popen(['echo ${PATH}'], stdout=subprocess.PIPE, shell=True)
+            	path_aux2 = subprocess.Popen(['tr','\n',':'], stdin=path_aux.stdout, stdout=subprocess.PIPE)
+            	path_aux.stdout.close()
+            	Path, perr = path_aux2.communicate()
+
+            	f3 = open('/etc/profile.d/condor.sh','a') # Create if the file doesn't exist
+            	f3.write("export PATH="+str(Path)+"/opt/"+CondorVersion+"/usr/bin:/opt/"+str(CondorVersion)+"/usr/sbin:/sbin\nexport CONDOR_CONFIG=/opt/"+str(CondorVersion)+"/etc/condor/condor_config\n")
+            	f3.close()
+
+            	os.environ['PATH'] = os.environ['PATH']+":/opt/"+CondorVersion+"/usr/bin:/opt/"+str(CondorVersion)+"/usr/sbin:/sbin"
+            	os.environ['CONDOR_CONFIG'] = "/opt/"+str(CondorVersion)+"/etc/condor/condor_config"
+            	##
+
+
+        	urllib.urlretrieve(CondorRepo,'/root/condor-7.8.7.repo')
+
+        	print "Installing Condor dependencies..."
+        	cc.install_packages(("yum-downloadonly","libvirt","perl-XML-Simple","openssl098e","compat-expat1","compat-openldap","perl-DateManip","perl-Time-HiRes","policycoreutils-python",))
+		
+		# subprocess.check_call(["yum -y install condor.x86_64 --downloadonly --downloaddir=/tmp"] , shell=True)		
+
+	        # r1 = subprocess.Popen(["ls -1 /tmp/condor-*.rpm"], stdout=subprocess.PIPE, shell=True)
+        	# r2 = subprocess.Popen(["head", "-1"],stdin=r1.stdout, stdout=subprocess.PIPE)
+        	# r1.stdout.close()
+        	# CondorRPM, rerror = r2.communicate()
+		# CondorRPM = re.sub('\n','',CondorRPM)	
+		# If condor is not available in the yum repository you can uncomment the following lines to donwload the .rpm directly from the source.
+		urllib.urlretrieve('http://research.cs.wisc.edu/htcondor/yum/stable/rhel6/condor-7.8.7-86173.rhel6.3.x86_64.rpm', '/root/condor.rpm') 	# Version 7.8.7
+		CondorRPM = '/root/condor.rpm'
+
+        	print "Condor installation:"
+        	subprocess.check_call(["rpm -ivh %s --relocate /usr=/opt/%s/usr --relocate /var=/opt/%s/var --relocate /etc=/opt/%s/etc" % (CondorRPM, CondorVersion, CondorVersion, CondorVersion)] , shell=True) 	# Relocating...
         
-	CondorRepo = "http://www.cs.wisc.edu/condor/yum/repo.d/condor-stable-rhel5.repo"
-        CondorVersion = "condor-7.8.7"	# Stable version. 
-
-	Hostname = re.sub('\n','',Hostname)	
-
-        urllib.urlretrieve(CondorRepo,'/root/condor-7.8.7.repo')
-
-        print "Installing Condor dependencies..."
-        cc.install_packages(("yum-downloadonly","libvirt","perl-XML-Simple","openssl098e","compat-expat1","compat-openldap","perl-DateManip","perl-Time-HiRes","policycoreutils-python",))
-
-	# At the moment the latest stable version of condor is not available in yum repository.
-	# When it is, you can uncomment this next part and comment the .rpm retieving from the official source.
-
-        # r1 = subprocess.Popen(["ls","-1","/tmp/condor-*.rpm"], stdout=subprocess.PIPE)
-        # r2 = subprocess.Popen(["head", "-1"],stdin=r1.stdout, stdout=subprocess.PIPE)
-        # r1.stdout.close()
-        # CondorRPM, rerror = r2.communicate()
-
-	urllib.urlretrieve('http://research.cs.wisc.edu/htcondor/yum/stable/rhel6/condor-7.8.7-86173.rhel6.3.x86_64.rpm', '/root/condor.rpm') 	# Stable version
-
-        print "Condor installation:"
-        subprocess.check_call(["rpm","-ivh","/root/condor.rpm"]) 	# Relocating results on some issues, so install condor by default
-        
+	# Write new configuration file
         f = open(ConfigFile,'w')        
         condor_cfg = cfg['condor']
 	
@@ -79,8 +110,8 @@ def handle(_name, cfg, cloud, log, _args):
         
         # PARAMETERS LIST
 
-        if 'condor-master' in condor_cfg:
-            Hostname = condor_cfg['condor-master']
+        if 'condor-host' in condor_cfg:
+            Hostname = condor_cfg['condor-host']
         f.write("CONDOR_HOST = "+str(Hostname)+'\n')
 
         f.write("COLLECTOR_NAME = Personal Condor at "+Hostname+'\n')
@@ -226,37 +257,32 @@ def handle(_name, cfg, cloud, log, _args):
 
         f.close()
         
-        # Moving our config file to the right directory (erase the old config)        
-        subprocess.check_call(['rm','-f','/etc/condor/condor_config.local'])
-        subprocess.check_call(['cp','/root/condor_config.local','/etc/condor/'])
 
-        # Specifying additional default directories in /etc/ld.so.conf
-        f2 = open('/etc/ld.so.conf','a')
-        f2.write("/opt/$CONDOR_VERSION/usr/lib64\n/opt/$CONDOR_VERSION/usr/lib64/condor\n")
-        f2.close()
+	if not OldVersion:
+        	# Moving our config file to the right directory (erase the old config)        
+        	subprocess.check_call(['rm','-f','/opt/%s/etc/condor/condor_config.local' % CondorVersion])
+        	subprocess.check_call(['cp','/root/condor_config.local','/opt/%s/etc/condor/' % CondorVersion])
+		subprocess.call(['rm','-f','/root/condor_config.local'])
+      
+		subprocess.call(['chown','-R','condor:condor','/opt/%s' % CondorVersion])
+		subprocess.call(['chmod','-R','go+rwx','/opt/%s/var/log' % CondorVersion])
 
-        # Sourcing from /etc/profile.d/condor.sh
-        path_aux = subprocess.Popen(['echo ${PATH}'], stdout=subprocess.PIPE, shell=True)
-        path_aux2 = subprocess.Popen(['tr','\n',':'], stdin=path_aux.stdout, stdout=subprocess.PIPE)
-	path_aux.stdout.close()
-	Path, perr = path_aux2.communicate()
-        
-        f3 = open('/etc/profile.d/condor.sh','a') # Create if the file doesn't exist
-        f3.write("export PATH="+str(Path)+"/opt/"+str(CondorVersion)+"/usr/bin:/opt/"+str(CondorVersion)+"/usr/sbin:/sbin\nexport CONDOR_CONFIG=/opt/"+str(CondorVersion)+"/etc/condor/condor_config\n")
-        f3.close()
+		# Specifying additional default directories in /etc/ld.so.conf
+	        f2 = open('/etc/ld.so.conf','a')
+     	   	f2.write('/opt/'+CondorVersion+'/usr/lib64\n/opt/'+CondorVersion+'/usr/lib64/condor\n')
+        	f2.close()
 
-        # Executing ldconfig
-        subprocess.check_call(['/sbin/ldconfig'])
+        	# Executing ldconfig
+        	subprocess.check_call(['/sbin/ldconfig'])
+                
 
-        # Sourcing
-        pipe = subprocess.Popen(". /etc/profile.d/condor.sh; env", stdout=subprocess.PIPE, shell=True)
-	data = pipe.communicate()[0]
-	env = dict((line.split("=", 1) for line in data.splitlines()))
-
-	environ.update(env)
+	else:
+		# Moving our config file to the right directory (overwrite the old config)
+                subprocess.check_call(['rm','-f','%s' % OldConfigFile])
+                subprocess.check_call(['cp','/root/condor_config.local','%s' % OldConfigFile])
+                subprocess.call(['rm','-f','/root/condor_config.local'])
 
         # Starting condor
         subprocess.check_call(['service','condor','start'])
 
-
-        # END
+	# END
