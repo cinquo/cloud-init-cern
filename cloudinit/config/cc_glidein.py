@@ -7,7 +7,7 @@ import subprocess
 
 
 __author__ = "Marek Denis <marek.denis@cern.ch>"
-__version__ = 0.1
+__version__ = 0.2
 
 
 ## CONTANTS ##
@@ -76,6 +76,8 @@ class PARAMETERS(object):
 
     def __open_and_parse_etc_config__(self,filename):
         """
+        Handle opening the default configuration file,
+        and run parsing method
         """
         try:
             with open(filename,'r') as fh:
