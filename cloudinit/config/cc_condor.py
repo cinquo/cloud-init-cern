@@ -99,15 +99,22 @@ def handle(_name, cfg, cloud, log, _args):
         condor_cfg = cfg['condor']
 	
 	# Default variables    
-        DaemonList = 'COLLECTOR, MASTER, NEGOTIATOR, SCHEDD, STARTD'
-        Highport = 24500
-        Lowport = 20000
+        DaemonList = 'MASTER, STARTD'
+        Highport = 9700
+        Lowport = 9600
         CollectorHostPORT = 20001
         Start = 'True'
         Suspend = 'False'
         Preempt = 'False'
         Kill = 'False'
-        
+        QueueSuperUsers = 'root, condor'        
+        AllowWrite = '*'
+        StarterAllowRunasOwner = 'False'
+        AllowDaemon = '*'
+        HostAllowRead = '*'
+        HostAllowWrite = '*'
+        SecDaemonAuthentication = 'OPTIONAL'
+
         # PARAMETERS LIST
 
         if 'condor-host' in condor_cfg:
@@ -115,6 +122,9 @@ def handle(_name, cfg, cloud, log, _args):
         f.write("CONDOR_HOST = "+str(Hostname)+'\n')
 
         f.write("COLLECTOR_NAME = Personal Condor at "+Hostname+'\n')
+
+        CondorAdmin = Hostname
+        UIDDomain = Hostname        
 
         if 'collector-host-port' in condor_cfg:
             CollectorHostPORT = condor_cfg['collector-host-port']
@@ -131,10 +141,12 @@ def handle(_name, cfg, cloud, log, _args):
             f.write("LOCAL_DIR = "+condor_cfg['local-dir']+'\n')
     
         if 'condor-admin' in condor_cfg:
-            f.write("CONDOR_ADMIN = "+str(condor_cfg['condor-admin'])+'\n')
+            CondorAdmin = condor_cfg['condor-admin']
+        f.write("CONDOR_ADMIN = "+str(CondorAdmin)+'\n')
 
         if 'queue-super-users' in condor_cfg:
-            f.write("QUEUE_SUPER_USERS = "+condor_cfg['queue-super-users']+'\n')
+            QueueSuperUsers = condor_cfg['queue-super-users']
+        f.write("QUEUE_SUPER_USERS = "+str(QueueSuperUsers)+'\n')
 
         if 'highport' in condor_cfg:
             Highport = condor_cfg['highport']
@@ -144,17 +156,24 @@ def handle(_name, cfg, cloud, log, _args):
             Lowport = condor_cfg['lowport']
         f.write("LOWPORT = "+str(Lowport)+'\n')
 
-        if 'uiddomain' in condor_cfg:
-            f.write("UID_DOMAIN = "+str(condor_cfg['uiddomain'])+'\n')
+        if 'uid-domain' in condor_cfg:
+            UIDDomain = condor_cfg['uid-domain']
+        f.write("UID_DOMAIN = "+str(UIDDomain)+'\n')
 
         if 'allow-write' in condor_cfg:
-            f.write("ALLOW_WRITE = "+str(condor_cfg['allow-write'])+'\n')
+            AllowWrite = condor_cfg['allow-write']    
+        f.write("ALLOW_WRITE = "+str(AllowWrite)+'\n')
 
         if 'dedicated-execute-account-regexp' in condor_cfg:
             f.write("DEDICATED_EXECUTE_ACCOUNT_REGEXP = "+str(condor_cfg['dedicated-execute-account-regexp'])+'\n')
 
+        if 'allow-daemon' in condor_cfg:
+            AllowDaemon = condor_cfg['allow-daemon']
+        f.write("ALLOW_DAEMON = "+str(AllowDaemon)+'\n')
+
         if 'starter-allow-runas-owner' in condor_cfg:
-            f.write("STARTER = "+str(condor_cfg['filesystem-domain'])+'\n')
+            StarterAllowRunasOwner = condor_cfg['starter-allow-runas-owner']    
+        f.write("STARTER_ALLOW_RUNAS_OWNER = "+str(StarterAllowRunasOwner)+'\n')
 
         if 'java' in condor_cfg:
             f.write("JAVA = "+str(condor_cfg['java'])+'\n')
@@ -193,7 +212,8 @@ def handle(_name, cfg, cloud, log, _args):
             f.write("SEC_DEFAULT_AUTHENTICATION_METHODS = "+str(condor_cfg['sec-default-authentication-methods'])+'\n')
 
         if 'sec-daemon-authentication' in condor_cfg:
-            f.write("SEC_DAEMON_AUTHENTICATION = "+str(condor_cfg['sec-daemon-authentication'])+'\n')
+            SecDaemonAuthentication = condor_cfg['sec-daemon-authentication']
+        f.write("SEC_DAEMON_AUTHENTICATION = "+str(SecDaemonAuthentication)+'\n')
 
         if 'sec-password-file' in condor_cfg:
             f.write("SEC_PASSWORD_FILE = "+str(condor_cfg['sec-password-file'])+'\n')
@@ -220,10 +240,12 @@ def handle(_name, cfg, cloud, log, _args):
             f.write("STARTD_CRON_ATLVAL_JOB_LOAD = "+str(condor_cfg['startd-cron-atlval-job-load'])+'\n')
 
         if 'hostallow-write' in condor_cfg:
-            f.write("HOSTALLOW_WRITE = "+str(condor_cfg['hostallow-write'])+'\n')
+            HostAllowWrite = condor_cfg['hostallow-write']    
+        f.write("HOSTALLOW_WRITE = "+str(HostAllowWrite)+'\n')
     
         if 'hostallow-read' in condor_cfg:
-            f.write("HOSTALLOW_READ = "+str(condor_cfg['hostallow-read'])+'\n')
+            HostAllowRead = condor_cfg['hostallow-read']    
+        f.write("HOSTALLOW_READ = "+str(HostAllowRead)+'\n')
 
         if 'start' in condor_cfg:
             Start = condor_cfg['start']
@@ -255,8 +277,19 @@ def handle(_name, cfg, cloud, log, _args):
     
         f.write("CONDOR_IDS = "+str(CondorIDs)+'\n')
 
+        # Dynamically writing SLOT users
+        CPUs_aux = subprocess.Popen(['cat /proc/cpuinfo | grep processor | wc -l'], stdout=subprocess.PIPE, shell=True)
+        CPUs, cpuerr = CPUs_aux.communicate()
+        CPUs = re.sub('\n','', CPUs)  
+
+        for count in range(1,int(CPUs)+1):
+            f.write("SLOT"+str(count)+"_USER = user"+str(count)+'\n')
+            os.system("useradd -m -s /sbin/nologin  user"+str(count)+" > /dev/null 2>&1\n")
+
         f.close()
         
+        # NECESSARY step: disabling iptables (otherwise there will be no connections allowed between Master and Node)
+        subprocess.check_call(['/etc/init.d/iptables', 'stop'])
 
 	if not OldVersion:
         	# Moving our config file to the right directory (erase the old config)        
