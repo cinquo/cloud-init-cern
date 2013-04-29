@@ -1,34 +1,23 @@
-# vi: ts=4 expandtab
+###########
+# Author: Cristovao Cordeiro <christovao.jose.domingues.cordeiro@cern.ch>
 #
-#    Copyright (C) 2013 CERN
-#
-#    Author: Cristovao Cordeiro <christovao.jose.domingues.cordeiro@cern.ch>
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU General Public License version 3, as
-#    published by the Free Software Foundation.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU General Public License for more details.
-#
-#    You should have received a copy of the GNU General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>
-
-# NOTE: Be very carefull with the user-data structure. A simple misplaced white-space can make cloud init skip the cloud config parameters.
+# Cloud Config module for Ganglia service. Testes and working on SLC6 machines.
+# Documentation in:
+# https://twiki.cern.ch/twiki/bin/view/LCG/CloudInit
+###########
 
 import subprocess
 import cloudinit.CloudConfig as cc
 import urllib
+import socket
+import re
 
-# Cloud Config module for Ganglia
 def handle(_name, cfg, cloud, log, _args):
     # Always check first if ganglia is referenced in the user-data	
     if 'ganglia' in cfg:
         print "Starting Ganglia setup..."
         # If it reaches this is because ganglia is referenced in user-data
-        print "Ready to setup ganglia..."
+        
         ganglia_cfg = cfg['ganglia']
         print "Installing and configuring Ganglia:"
         
@@ -39,13 +28,14 @@ def handle(_name, cfg, cloud, log, _args):
         if 'nodes' in ganglia_cfg and 'headnode' in ganglia_cfg:
             print "ATTENTION: you can not configure a ganglia node and a ganlgia head node on the same machine!\nSkipping ganglia configuration..."
             return
-        # For Ganglia setup there are just 2 main step: install packages and write gmond configuration
-    
+        
         # Install Ganglia and gmond
         cc.install_packages(("ganglia","ganglia-gmond",))
         # If ganglia-gmetad and ganglia-web are required they should be installed the same way as ganglia and ganglia-gmond
         if 'headnode' in ganglia_cfg:
-            cc.install_packages(("ganglia-gmetad"," ganglia-web",))
+	    # Apache and PHP are required for the ganglia headnode
+	    cc.install_packages(("httpd","php",))
+            cc.install_packages(("ganglia-gmetad","ganglia-web",))
             gmetad_conf_file = '/etc/ganglia/gmetad.conf'
             hconf = open(gmetad_conf_file, 'r')
             hlines = hconf.readlines()
@@ -71,15 +61,36 @@ def handle(_name, cfg, cloud, log, _args):
                 polling_interval = ganglia_param_cfg['polling']
             else:
                 polling_interval = 15   # 15 sec is the default time
-            if 'addresses' in ganglia_param_cfg:
-                address = ganglia_param_cfg['addresses']
+            if 'address' in ganglia_param_cfg:
+                address = ganglia_param_cfg['address']
             else:
                 address = 'localhost'   # Default
+	    if 'port' in ganglia_param_cfg:
+		port = ganglia_param_cfg['port']
+	    else:
+		port = '8649'
             for h in range(0,len(hlines)):
                 if '#' not in hlines[h]:
                     if 'data_source' in hlines[h]:
-                        hlines[h] = 'data_source '+data_source_name+' '+str(polling_interval)+' '+address+'\n'
+                        hlines[h] = 'data_source '+data_source_name+' '+str(polling_interval)+' '+address+':'+str(port)+'\n'
                         break
+	    
+	    aux_host = subprocess.Popen(['hostname -f'], shell=True, stdout=subprocess.PIPE)
+	    full_hostname, hosterr = aux_host.communicate()
+	    full_hostname = re.sub('\n','',full_hostname)
+
+	    for l in range(0,len(lines)):
+		if 'name = "unspecified"' in lines[l]:
+		    lines[l] = '  name = '+data_source_name+'\n'
+		if 'mcast_join' in lines[l]:
+		    lines[l] = '  host = '+str(full_hostname)+'\n' 
+		if 'bind = ' in lines[l]:
+		    lines[l] = '  #'+str(lines[l])+'\n'
+		if 'port = ' in lines[l]:
+		    lines[l] = '  port = '+str(port)+'\n'
+		if 'ttl = ' in lines[l]:
+		    lines[l] = '  #'+str(lines[l])+'\n'
+		
 
             hconf_new = open(gmetad_conf_file, 'w')     # Open the same file, but let's overwrite it with the new variables
             hconf_new.writelines(hlines)
@@ -255,7 +266,33 @@ def handle(_name, cfg, cloud, log, _args):
         # Start gmond
         flocal_new.writelines(lines)
         flocal_new.close()
-        if headnode_bool:
-            subprocess.check_call(['service','gmetad','restart'])
         
-        subprocess.check_call(['/etc/init.d/gmond','restart'])
+        # Stop iptables to solve connectivity issues. Configuring iptables would be a better solution
+        subprocess.check_call(['service','iptables','stop'])
+    
+        subprocess.call(['setsebool','httpd_can_network_connect','1'])
+           
+        subprocess.check_call(['/etc/init.d/gmond','start'])        
+
+        if headnode_bool:
+           
+            # Starting and configuring Apache
+           
+            NewLine = '    Allow from cern.ch\n  </Location>\n'
+            httpdf = open('/etc/httpd/conf.d/ganglia.conf','r')
+	    oldlines = httpdf.readlines()
+	    for l in range(0,len(oldlines)):
+		if '</Location>' in oldlines[l]:
+			oldlines[l] = NewLine
+
+	    httpdf.close()
+	    httpdf_write = open('etc/httpd/conf.d/ganglia.conf','w')
+	    httpdf_write.writelines(oldlines)
+	    httpdf_write.close()      
+        
+	    subprocess.check_call(['service','httpd','start'])
+
+            subprocess.check_call(['service','gmetad','start'])
+
+
+	#### END ####
