@@ -1,8 +1,8 @@
 Name: cern-cloudinit-modules
-Version: 1.0
+Version: 1.1
 Release: 1
 Summary: CERN services (cvmfs, ganglia and condor) modules for CloudInit	
-
+Requires: cloud-init
 Group: ES	
 License: GPL	
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-buildroot
