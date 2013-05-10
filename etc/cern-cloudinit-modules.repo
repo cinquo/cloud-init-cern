@@ -1,0 +1,5 @@
+[cerncloudinitrepo]
+name=CERN-CloudInit-Modules
+baseurl=http://chdoming.web.cern.ch/chdoming/package/
+enabled=1
+
