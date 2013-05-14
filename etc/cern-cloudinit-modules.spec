@@ -3,7 +3,7 @@ Version: 1.1
 Release: 1
 Summary: CERN services (cvmfs, ganglia and condor) modules for CloudInit	
 Requires: cloud-init
-Group: ES	
+Group: IT-SDC-OL	
 License: GPL	
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-buildroot
 BuildArch: noarch
@@ -15,8 +15,9 @@ This RPM copies the cloud config modules of cvmfs, Ganglia and Condor to its res
 
 %pre
 echo "Downloading the modules..."
-wget chdoming.web.cern.ch/chdoming/cern-cloudinit-modules.tar
-tar xvf cern-cloudinit-modules.tar
+wget https://raw.github.com/cinquo/cloud-init-cern/devel/cloudinit/config/cc_condor.py
+wget https://raw.github.com/cinquo/cloud-init-cern/devel/cloudinit/config/cc_cvmfs.py
+wget https://raw.github.com/cinquo/cloud-init-cern/devel/cloudinit/config/cc_ganglia.py
 
 mv cc_ganglia.py /usr/lib/python2.6/site-packages/cloudinit/CloudConfig/
 mv cc_cvmfs.py /usr/lib/python2.6/site-packages/cloudinit/CloudConfig/
