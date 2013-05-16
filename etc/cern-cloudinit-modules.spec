@@ -1,6 +1,6 @@
 Name: cern-cloudinit-modules
 Version: 1.1
-Release: 1
+Release: 2
 Summary: CERN services (cvmfs, ganglia and condor) modules for CloudInit	
 Requires: cloud-init
 Group: IT-SDC-OL	
@@ -14,16 +14,19 @@ This RPM copies the cloud config modules of cvmfs, Ganglia and Condor to its res
 
 
 %pre
-echo "Downloading the modules..."
-wget https://raw.github.com/cinquo/cloud-init-cern/devel/cloudinit/config/cc_condor.py
-wget https://raw.github.com/cinquo/cloud-init-cern/devel/cloudinit/config/cc_cvmfs.py
-wget https://raw.github.com/cinquo/cloud-init-cern/devel/cloudinit/config/cc_ganglia.py
+echo "Cloning the repository..."
+git clone git@github.com:cinquo/cloud-init-cern.git
+cd cloud-init-cern/
+git checkout 0.1-pre1
 
-mv cc_ganglia.py /usr/lib/python2.6/site-packages/cloudinit/CloudConfig/
-mv cc_cvmfs.py /usr/lib/python2.6/site-packages/cloudinit/CloudConfig/
-mv cc_condor.py /usr/lib/python2.6/site-packages/cloudinit/CloudConfig/
+echo "Copying the modules..."
+# wget https://raw.github.com/cinquo/cloud-init-cern/devel/cloudinit/config/cc_condor.py
+# wget https://raw.github.com/cinquo/cloud-init-cern/devel/cloudinit/config/cc_cvmfs.py
+# wget https://raw.github.com/cinquo/cloud-init-cern/devel/cloudinit/config/cc_ganglia.py
 
-rm cern-cloudinit-modules.tar
+cp cloudinit/config/cc_ganglia.py /usr/lib/python2.6/site-packages/cloudinit/CloudConfig/
+cp cloudinit/config/cc_cvmfs.py /usr/lib/python2.6/site-packages/cloudinit/CloudConfig/
+cp cloudinit/config/cc_condor.py /usr/lib/python2.6/site-packages/cloudinit/CloudConfig/
 
 %build
 
@@ -38,6 +41,9 @@ current='cloud_config_modules:'
 new='cloud_config_modules:\n - cvmfs\n - ganglia\n - condor'
 sed -i.bak "s/${current}/${new}/g" /etc/cloud/cloud.cfg
 
+echo "Cleaning repository..."
+cd ..
+rm -rf cloud-init-cern/ 
 echo "Installation is done. Bye!"
 
 

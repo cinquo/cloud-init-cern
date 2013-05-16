@@ -2,4 +2,4 @@
 name=CERN-CloudInit-Modules
 baseurl=http://cern-cloudinit-modules.web.cern.ch/cern-cloudinit-modules/
 enabled=1
-
+gpgcheck=0

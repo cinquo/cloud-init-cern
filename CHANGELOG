@@ -1,0 +1,19 @@
+0.2-test in Tue May 21 11:46:55 CEST 2013
+  - test
+  - Small change on the repo file. No gpgcheck needed
+  - Adding functional buildrelease.sh
+  - test
+  - test2
+  - test
+  - test2
+  - test
+  - Adding first full version of buildrelease.sh
+  - Making some general corrections on several files. Pushing tag.
+  - Updated README file
+  - Updated README file
+  - New README
+  - New README file. Only one.
+  - README merged to main folder
+  - Adding new YUM repo that will fetch the RPM from DFS
+  - Adding SPEC file of the new RPM
+  - Adding new RPM (fetching corrected) working with YUM
