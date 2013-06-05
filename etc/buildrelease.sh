@@ -48,7 +48,7 @@ CURRENT_DIR=`pwd`
 
 if [ ! -z "$CODE_URL" ]; then
 	git clone $CODE_URL
-	if [ $? -eq 0 ]; then
+	if [ $? -ne 0 ]; then
 		error=$?
 		echo -e '\nFailed to clone git repo. Please check if you provided a valid URL.'
 		exit $error
