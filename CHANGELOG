@@ -1,24 +1,2 @@
-0.2-test3 in Tue May 21 11:56:04 CEST 2013
-  - Adding RPM built from buildrelease script, on tag 0.2-test2
-  - 0.2-test2
-  - Deleting old RPM's
-  - Adding RPM built from buildrelease script, on tag 0.2-test
-  - 0.2-test
-  - test
-  - Small change on the repo file. No gpgcheck needed
-  - Adding functional buildrelease.sh
-  - test
-  - test2
-  - test
-  - test2
-  - test
-  - Adding first full version of buildrelease.sh
-  - Making some general corrections on several files. Pushing tag.
-  - Updated README file
-  - Updated README file
-  - New README
-  - New README file. Only one.
-  - README merged to main folder
-  - Adding new YUM repo that will fetch the RPM from DFS
-  - Adding SPEC file of the new RPM
-  - Adding new RPM (fetching corrected) working with YUM
+0.1-pre5 in Wed Jun 5 10:55:33 CEST 2013
+  - Adding RPM built from buildrelease script, on tag test1
