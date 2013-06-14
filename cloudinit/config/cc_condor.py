@@ -90,7 +90,7 @@ def handle(_name, cfg, cloud, log, _args):
             	# This sourcing is done here, instead of being done in the end, to avoid situation where the user logs in into the machine before the configuration is finished.
 
         	print "Installing Condor dependencies..."
-        	cc.install_packages(("yum-downloadonly","libvirt","perl-XML-Simple","openssl098e","compat-expat1","compat-openldap","perl-DateManip","perl-Time-HiRes","policycoreutils-python",))
+        	cc.install_packages(("yum-downloadonly","libtool-ltdl","libvirt","perl-XML-Simple","openssl098e","compat-expat1","compat-openldap","perl-DateManip","perl-Time-HiRes","policycoreutils-python",))
 		
 		if arch == '.i': arch == ''	# To avoid confusions between i386 and i686, which are 32 bits. So let's just 'yum install condor' in case the machine is 32 bits
 
