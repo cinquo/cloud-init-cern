@@ -48,73 +48,91 @@ def handle(_name, cfg, cloud, log, _args):
         Hostname, ReleaseErr = Host.communicate()
 	Hostname = re.sub('\n','',Hostname)      
 
+	# There is the possibilty of telling the module where to download Condor from
+	Repo = False
+	if 'rpm-url' in condor_cc_cfg:
+		Repo = True
+		InstallFrom = condor_cc_cfg['rpm-url']
+
+
 	if not OldVersion:
-		CondorRepo = "http://www.cs.wisc.edu/condor/yum/repo.d/condor-stable-rhel6.repo"
-		urllib.urlretrieve(CondorRepo,'/etc/yum.repos.d/condor.repo')        	
-
-		# Defining the most suitable condor version for the machine
-		arch = str(platform.machine())
-		if arch == 'x86_64': arch = '.'+str(arch)
+		if Repo:
+			try:
+				urllib.urlretrieve(InstallFrom, '/root/condor.rpm')
+				CondorRPM = '/root/condor.rpm'
+				CondorVersion = "condor"
+			except:
+				print '\nATTENTION: the condor repository you provided is not valid. Skipping condor module...\n'
+				return
 		else:
-			arch = '.i'
-		version0 = subprocess.Popen(['yum','info','condor%s' % arch], stdout=subprocess.PIPE)
-		version1 = subprocess.Popen(['grep','Version   '], stdin=version0.stdout, stdout=subprocess.PIPE)
-		version0.stdout.close()
-		yum_version, verror = version1.communicate()
-		yum_version = re.sub('\n','', yum_version)
-		yum_version = re.sub(' ','',yum_version)
-		
-		yum_condor_version = yum_version.split(':')
-		
-		DownloadManually = False
-		# If CondorVersion is empty that it means that condor is not available on the yum repository or that some error has occured
-		if not yum_condor_version:
-			# In this case let's define and download manually the condor we want to install 
-			CondorVersion = "condor-7.8.7"	# Stable version
-			DownloadManually = True
-		else:
-			CondorVersion = 'condor-'+str(yum_condor_version[1])
+			CondorRepo = "http://www.cs.wisc.edu/condor/yum/repo.d/condor-stable-rhel6.repo"
+			urllib.urlretrieve(CondorRepo,'/etc/yum.repos.d/condor.repo')        	
 
- 	        # Sourcing from /etc/profile.d/condor.sh
+			# Defining the most suitable condor version for the machine
+			arch = str(platform.machine())
+			if arch == 'x86_64': arch = '.'+str(arch)
+			else:
+				arch = '.i'
+			version0 = subprocess.Popen(['yum','info','condor%s' % arch], stdout=subprocess.PIPE)
+			version1 = subprocess.Popen(['grep','Version   '], stdin=version0.stdout, stdout=subprocess.PIPE)
+			version0.stdout.close()
+			yum_version, verror = version1.communicate()
+			yum_version = re.sub('\n','', yum_version)
+			yum_version = re.sub(' ','',yum_version)
+			
+			yum_condor_version = yum_version.split(':')
+		
+			DownloadManually = False
+			# If CondorVersion is empty that it means that condor is not available on the yum repository or that some error has occured
+			if not yum_condor_version:
+				# In this case let's define and download manually the condor we want to install 
+				CondorVersion = "condor-7.8.7"	# Stable version
+				DownloadManually = True
+			else:
+				CondorVersion = 'condor-'+str(yum_condor_version[1])
+	
+			if arch == '.i': arch == ''     # To avoid confusions between i386 and i686, which are 32 bits. So let's just 'yum install condor' in case the machine is 32 bits
+
+ 		# Sourcing from /etc/profile.d/condor.sh
             	path_aux = subprocess.Popen(['echo ${PATH}'], stdout=subprocess.PIPE, shell=True)
-            	path_aux2 = subprocess.Popen(['tr','\n',':'], stdin=path_aux.stdout, stdout=subprocess.PIPE)
-            	path_aux.stdout.close()
+	        path_aux2 = subprocess.Popen(['tr','\n',':'], stdin=path_aux.stdout, stdout=subprocess.PIPE)
+        	path_aux.stdout.close()
             	Path, perr = path_aux2.communicate()
-
-            	f3 = open('/etc/profile.d/condor.sh','a') # Create if the file doesn't exist
+	
+        	f3 = open('/etc/profile.d/condor.sh','a') # Create if the file doesn't exist
             	f3.write("export PATH="+str(Path)+"/opt/"+CondorVersion+"/usr/bin:/opt/"+str(CondorVersion)+"/usr/sbin:/sbin\nexport CONDOR_CONFIG=/opt/"+str(CondorVersion)+"/etc/condor/condor_config\n")
-            	f3.close()
-
-            	os.environ['PATH'] = os.environ['PATH']+":/opt/"+CondorVersion+"/usr/bin:/opt/"+str(CondorVersion)+"/usr/sbin:/sbin"
+	        f3.close()
+	
+        	os.environ['PATH'] = os.environ['PATH']+":/opt/"+CondorVersion+"/usr/bin:/opt/"+str(CondorVersion)+"/usr/sbin:/sbin"
             	os.environ['CONDOR_CONFIG'] = "/opt/"+str(CondorVersion)+"/etc/condor/condor_config"
-            	# This sourcing is done here, instead of being done in the end, to avoid situation where the user logs in into the machine before the configuration is finished.
-
+	        # This sourcing is done here, instead of being done in the end, to avoid situation where the user logs in into the machine before the configuration is finished.
+	
         	print "Installing Condor dependencies..."
         	cc.install_packages(("yum-downloadonly","libtool-ltdl","libvirt","perl-XML-Simple","openssl098e","compat-expat1","compat-openldap","perl-DateManip","perl-Time-HiRes","policycoreutils-python",))
-		
-		if arch == '.i': arch == ''	# To avoid confusions between i386 and i686, which are 32 bits. So let's just 'yum install condor' in case the machine is 32 bits
 
-		if not DownloadManually:
-			subprocess.call(["yum -y install condor%s --downloadonly --downloaddir=/tmp" % arch] , shell=True)		
 
-	        	r1 = subprocess.Popen(["ls -1 /tmp/condor-*.rpm"], stdout=subprocess.PIPE, shell=True)
-        		r2 = subprocess.Popen(["head", "-1"],stdin=r1.stdout, stdout=subprocess.PIPE)
-        		r1.stdout.close()
-        		CondorRPM, rerror = r2.communicate()
-			CondorRPM = re.sub('\n','',CondorRPM)	
-		else:			
-			arch = str(platform.machine())	# All of these arch redefinements are due to the fact that on the yum repo, the condor 32 bits is named condor.i386 and on the official website it is condor.i686
-			# If condor is not available in the yum repository you can uncomment the following lines to donwload the .rpm directly from the source.
-			try:
-				urllib.urlretrieve('http://research.cs.wisc.edu/htcondor/yum/stable/rhel6/condor-7.8.7-86173.rhel6.3.'+arch+'.rpm', '/root/condor.rpm') 	# Version 7.8.7
-			except:
-				# If it failed it probably means that the arch is not right or it is not compatible with the available condor versions
-				urllib.urlretrieve('http://research.cs.wisc.edu/htcondor/yum/stable/rhel6/condor-7.8.7-86173.rhel6.3.i686.rpm', '/root/condor.rpm')
+		if not Repo:
+			if not DownloadManually:
+				subprocess.call(["yum -y install condor%s --downloadonly --downloaddir=/tmp" % arch] , shell=True)		
+	
+		        	r1 = subprocess.Popen(["ls -1 /tmp/condor-*.rpm"], stdout=subprocess.PIPE, shell=True)
+        			r2 = subprocess.Popen(["head", "-1"],stdin=r1.stdout, stdout=subprocess.PIPE)
+        			r1.stdout.close()
+        			CondorRPM, rerror = r2.communicate()
+				CondorRPM = re.sub('\n','',CondorRPM)	
+			else:			
+				arch = str(platform.machine())	# All of these arch redefinements are due to the fact that on the yum repo, the condor 32 bits is named condor.i386 and on the official website it is condor.i686
+				# If condor is not available in the yum repository you can uncomment the following lines to donwload the .rpm directly from the source.
+				try:
+					urllib.urlretrieve('http://research.cs.wisc.edu/htcondor/yum/stable/rhel6/condor-7.8.7-86173.rhel6.3.'+arch+'.rpm', '/root/condor.rpm') 	# Version 7.8.7
+				except:
+					# If it failed it probably means that the arch is not right or it is not compatible with the available condor versions
+					urllib.urlretrieve('http://research.cs.wisc.edu/htcondor/yum/stable/rhel6/condor-7.8.7-86173.rhel6.3.i686.rpm', '/root/condor.rpm')
 				CondorRPM = '/root/condor.rpm'
-
+	
         	print "Condor installation:"
         	subprocess.check_call(["rpm -ivh %s --relocate /usr=/opt/%s/usr --relocate /var=/opt/%s/var --relocate /etc=/opt/%s/etc" % (CondorRPM, CondorVersion, CondorVersion, CondorVersion)] , shell=True) 	# Relocating...
-       		# subprocess.check_call(["rpm -ivh %s" % CondorRPM], shell=True) 	# Uncomment this line and comment the above one if you do not want to relocate condor installation
+	       	# subprocess.check_call(["rpm -ivh %s" % CondorRPM], shell=True) 	# Uncomment this line and comment the above one if you do not want to relocate condor installation
 	
 	# Write new configuration file
         f = open(ConfigFile,'w')        
