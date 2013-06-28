@@ -12,6 +12,7 @@ import urllib
 import os
 import re
 import platform
+import tempfile
 
 def handle(_name, cfg, cloud, log, _args):
    if 'condor' in cfg:
@@ -54,12 +55,14 @@ def handle(_name, cfg, cloud, log, _args):
 		Repo = True
 		InstallFrom = condor_cc_cfg['rpm-url']
 
+	# In case a RPM is being downloaded, let's do it in a temp file
+	tp = tempfile.NamedTemporaryFile()	
 
 	if not OldVersion:
 		if Repo:
 			try:
-				urllib.urlretrieve(InstallFrom, '/root/condor.rpm')
-				CondorRPM = '/root/condor.rpm'
+				urllib.urlretrieve(InstallFrom, tp.name)
+				CondorRPM = tp.name
 				CondorVersion = "condor"
 			except:
 				print '\nATTENTION: the condor repository you provided is not valid. Skipping condor module...\n'
@@ -124,11 +127,11 @@ def handle(_name, cfg, cloud, log, _args):
 				arch = str(platform.machine())	# All of these arch redefinements are due to the fact that on the yum repo, the condor 32 bits is named condor.i386 and on the official website it is condor.i686
 				# If condor is not available in the yum repository you can uncomment the following lines to donwload the .rpm directly from the source.
 				try:
-					urllib.urlretrieve('http://research.cs.wisc.edu/htcondor/yum/stable/rhel6/condor-7.8.7-86173.rhel6.3.'+arch+'.rpm', '/root/condor.rpm') 	# Version 7.8.7
+					urllib.urlretrieve('http://research.cs.wisc.edu/htcondor/yum/stable/rhel6/condor-7.8.7-86173.rhel6.3.'+arch+'.rpm', tp.name) 	# Version 7.8.7
 				except:
 					# If it failed it probably means that the arch is not right or it is not compatible with the available condor versions
-					urllib.urlretrieve('http://research.cs.wisc.edu/htcondor/yum/stable/rhel6/condor-7.8.7-86173.rhel6.3.i686.rpm', '/root/condor.rpm')
-				CondorRPM = '/root/condor.rpm'
+					urllib.urlretrieve('http://research.cs.wisc.edu/htcondor/yum/stable/rhel6/condor-7.8.7-86173.rhel6.3.i686.rpm', tp.name)
+				CondorRPM = tp.name
 	
         	print "Condor installation:"
         	subprocess.check_call(["rpm -ivh %s --relocate /usr=/opt/%s/usr --relocate /var=/opt/%s/var --relocate /etc=/opt/%s/etc" % (CondorRPM, CondorVersion, CondorVersion, CondorVersion)] , shell=True) 	# Relocating...
