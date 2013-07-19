@@ -11,11 +11,21 @@ import cloudinit.CloudConfig as cc
 import urllib
 import socket
 import re
+import sys
 
 def handle(_name, cfg, cloud, log, _args):
     # Always check first if ganglia is referenced in the user-data	
     if 'ganglia' in cfg:
-        print "Starting Ganglia setup..."
+        # In case this runs to early during the boot, the PATH environment can still be unset. Let's define each necessary command's path
+	# Using subprocess calls so it raises exceptions directly from the child process to the parent
+	YUM_cmd = '/usr/bin/yum'
+	HOST_cmd = '/bin/hostname'
+	SERVICE_cmd = '/sbin/service'
+	GMOND_cmd = '/etc/init.d/gmond'
+	SETSE_cmd = '/usr/sbin/setsebool'
+	
+
+	print "Starting Ganglia setup..."
         # If it reaches this is because ganglia is referenced in user-data
         
         ganglia_cfg = cfg['ganglia']
@@ -29,13 +39,20 @@ def handle(_name, cfg, cloud, log, _args):
             print "ATTENTION: you can not configure a ganglia node and a ganlgia head node on the same machine!\nSkipping ganglia configuration..."
             return
         
-        # Install Ganglia and gmond
-        cc.install_packages(("ganglia","ganglia-gmond",))
-        # If ganglia-gmetad and ganglia-web are required they should be installed the same way as ganglia and ganglia-gmond
+	Installation = False
+	if 'install' in ganglia_cfg:
+		Installation = ganglia_cfg['install']
+		#cc.install_packages(('ganglia','ganglia-gmond',))
+		if Installation == True:
+			subprocess.check_call([YUM_cmd,'-y','install','ganglia','ganglia-gmond'])
+        
+	# If ganglia-gmetad and ganglia-web are required they should be installed the same way as ganglia and ganglia-gmond
         if 'headnode' in ganglia_cfg:
 	    # Apache and PHP are required for the ganglia headnode
-	    cc.install_packages(("httpd","php",))
-            cc.install_packages(("ganglia-gmetad","ganglia-web",))
+	    if Installation == True:
+		subprocess.check_call([YUM_cmd,'-y','install','httpd','php','ganglia-gmetad','ganglia-web'])
+	    	#cc.install_packages(("httpd","php",))
+            	#cc.install_packages(("ganglia-gmetad","ganglia-web",))
             gmetad_conf_file = '/etc/ganglia/gmetad.conf'
             hconf = open(gmetad_conf_file, 'r')
             hlines = hconf.readlines()
@@ -75,7 +92,7 @@ def handle(_name, cfg, cloud, log, _args):
                         hlines[h] = 'data_source '+data_source_name+' '+str(polling_interval)+' '+address+':'+str(port)+'\n'
                         break
 	    
-	    aux_host = subprocess.Popen(['hostname -f'], shell=True, stdout=subprocess.PIPE)
+	    aux_host = subprocess.Popen(['%s -f' % HOST_cmd], shell=True, stdout=subprocess.PIPE)
 	    full_hostname, hosterr = aux_host.communicate()
 	    full_hostname = re.sub('\n','',full_hostname)
 
@@ -268,11 +285,11 @@ def handle(_name, cfg, cloud, log, _args):
         flocal_new.close()
         
         # Stop iptables to solve connectivity issues. Configuring iptables would be a better solution
-        subprocess.check_call(['service','iptables','stop'])
+        subprocess.check_call([SERVICE_cmd,'iptables','stop'])
     
-        subprocess.call(['setsebool','httpd_can_network_connect','1'])
+        subprocess.call([SETSE_cmd,'httpd_can_network_connect','1'])
            
-        subprocess.check_call(['/etc/init.d/gmond','start'])        
+        subprocess.check_call([GMOND_cmd,'restart'])        
 
         if headnode_bool:
            
@@ -290,9 +307,9 @@ def handle(_name, cfg, cloud, log, _args):
 	    httpdf_write.writelines(oldlines)
 	    httpdf_write.close()      
         
-	    subprocess.check_call(['service','httpd','start'])
+	    subprocess.check_call([SERVICE_cmd,'httpd','restart'])
 
-            subprocess.check_call(['service','gmetad','start'])
+            subprocess.check_call([SERVICE_cmd,'gmetad','restart'])
 
 
 	#### END ####

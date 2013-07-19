@@ -11,7 +11,8 @@ import cloudinit.util as util
 import cloudinit.CloudConfig as cc
 import platform
 import urllib
-
+import sys
+import os
 
 def handle(_name, cfg, cloud, log, _args):
     
@@ -20,52 +21,68 @@ def handle(_name, cfg, cloud, log, _args):
         print "cvmfs configuration was not found"
         return
     
+    # In case this runs to early during the boot, the PATH environment can still be unset. Let's define each necessary command's path
+    # Using subprocess calls so it raises exceptions directly from the child process to the parent
+    RPM_cmd = '/bin/rpm'
+    YUM_cmd = '/usr/bin/yum'
+    SERVICE_cmd = '/sbin/service'
+    CHK_cmd = '/sbin/chkconfig'
+
     print "Ready to setup cvmfs."
-    cvmfs_cfg = cfg['cvmfs']
     if 'cvmfs' in cfg:	
+	cvmfs_cfg = cfg['cvmfs']
 	print "Configuring cvmfs...(this may take a while)"
 	
-	# Let's retrieve the current cvmfs release
-	ReleaseAux = subprocess.Popen(["rpm", "-q", "--queryformat", "%{version}", "sl-release"], stdout=subprocess.PIPE)
-	Release, ReleaseErr = ReleaseAux.communicate()
+	Installation = False
+	if 'install' in cvmfs_cfg:
+	    Installation = cvmfs_cfg['install']
+	    if Installation == True:
+	    	# Let's retrieve the current cvmfs release
+	    	ReleaseAux = subprocess.Popen([RPM_cmd, "-q", "--queryformat", "%{version}", "sl-release"], stdout=subprocess.PIPE)
+	    	Release, ReleaseErr = ReleaseAux.communicate()
 		
-	ReleaseMajor = Release[0]
+  	    	ReleaseMajor = Release[0]
 	
-	arch = platform.machine()	# Platform info
+            	arch = platform.machine()	# Platform info
 	
-	# cvmfs package url
-	cvmfs_rpm_url = 'http://cvmrepo.web.cern.ch/cvmrepo/yum/cvmfs/EL/'+Release+'/'+arch+'/cvmfs-release-2-2.el'+ReleaseMajor+'.noarch.rpm'
-	# Downloading cvmfs .rpm file to /home path
-	urllib.urlretrieve(cvmfs_rpm_url, '/home/cvmfs.rpm')
-	if subprocess.check_call(["rpm", "-i", "/home/cvmfs.rpm"]):	# If it returns 0 then it is fine
-	    print ".rpm installation failed"
-            return
-    	else:
-            print ".rpm installation successful."
-
-	# Install cvmfs packages
-	try:
-		cc.install_packages(("cvmfs-keys","cvmfs","cvmfs-init-scripts",))   # If this fails then yum clean all
-	except:
-		subprocess.call(['yum','clean','all'])
-		try:
-			cc.install_packages(("cvmfs-keys","cvmfs","cvmfs-init-scripts",))
-		except:
-			print "CVMFS installation from the yum repository has failed\n"
-			print "Ignoring CVMFS setup..."
-			return
+  	    	# cvmfs package url
+	    	cvmfs_rpm_url = 'http://cvmrepo.web.cern.ch/cvmrepo/yum/cvmfs/EL/'+ReleaseMajor+'/'+arch+'/cvmfs-release-2-3.el'+ReleaseMajor+'.noarch.rpm'
+	    	# Downloading cvmfs .rpm file to /home path
+	    	urllib.urlretrieve(cvmfs_rpm_url, '/home/cvmfs.rpm')
+	    	if subprocess.check_call([RPM_cmd, "-Uvh", "/home/cvmfs.rpm"]):	# If it returns 0 then it is fine
+	        	print ".rpm installation failed"
+                	return
+    	   	else:
+                	print ".rpm installation successful."
+	    
+	        # Install cvmfs packages
+	   	try:
+			subprocess.check_call([YUM_cmd,'-y','install','cvmfs-keys','cvmfs','cvmfs-init-scripts'])	# cvmfs-auto-setup can also be installed. Meant for Tier 3's
+	        	#cc.install_packages(("cvmfs-keys","cvmfs","cvmfs-init-scripts",))   # If this fails then yum clean all
+	    	except:
+	    		subprocess.call([YUM_cmd,'clean','all'])
+			try:
+				subprocess.check_call([YUM_cmd,'-y','install','cvmfs-keys','cvmfs','cvmfs-init-scripts'])
+		    		#cc.install_packages(("cvmfs-keys","cvmfs","cvmfs-init-scripts",))
+			except:
+		    		print "CVMFS installation from the yum repository has failed\n"
+		    		print "Ignoring CVMFS setup..."
+		    		return
 	
-	# Base setup
-	subprocess.call(["cvmfs_config", "setup"])
+	    	# Base setup
+		os.system("export PATH=${PATH}:/usr/bin:/sbin; cvmfs_config setup")	    	
+		#subprocess.call(["/usr/bin/cvmfs_config setup"], shell=True)
         
-	# Start autofs and make it starting automatically after reboot 
-        subprocess.call(['service','autofs','start'])
-        subprocess.call(['chkconfig','autofs','on'])
-        subprocess.call(['cvmfs_config','chksetup'])	
+	    	# Start autofs and make it starting automatically after reboot 
+            	subprocess.check_call([SERVICE_cmd,'autofs','start'])
+            	subprocess.check_call([CHK_cmd,'autofs','on'])
+            	os.system("export PATH=${PATH}:/usr/bin:/sbin; cvmfs_config chksetup")
+		#subprocess.check_call(['cvmfs_config','chksetup'])	
 
 	LocalFile = '/etc/cvmfs/default.local'
 	DomainFile = '/etc/cvmfs/domain.d/cern.ch.local'
-        quota_aux_var = 1   # Aux varibale to check whether to write default quota-limit value or not	
+        CMS_LocalFile = '/etc/cvmfs/config.d/cms.cern.ch.local'
+	quota_aux_var = 1   # Aux varibale to check whether to write default quota-limit value or not	
 	# To configure cvmfs...
 	if 'local' in cvmfs_cfg:
 	    local_args = cvmfs_cfg['local']
@@ -83,8 +100,10 @@ def handle(_name, cfg, cloud, log, _args):
                     flocal.write('CVMFS_QUOTA_LIMIT='+str(value)+'\n')
                     quota_aux_var = 0
 	        if prop_name == 'cms-local-site':
-                    flocal.write('\nCMS_LOCAL_SITE='+str(value)+'\n')
-		    flocal.write('export CMS_LOCAL_SITE=T2_CH_CERN_AI\n')
+		    cmslocal = open(CMS_LocalFile, 'w')
+                    #cmslocal.write('CMS_LOCAL_SITE='+str(value)+'\n')
+		    cmslocal.write('export CMS_LOCAL_SITE='+str(value)+'\n')
+		    cmslocal.close()
 	
 	    # Write some default configurations
             if quota_aux_var:
@@ -106,6 +125,8 @@ def handle(_name, cfg, cloud, log, _args):
 	
 	print "START cvmfs"
         # Start cvmfs
-        subprocess.check_call(['service', 'cvmfs', 'start'])
-        subprocess.call(['service', 'cvmfs', 'probe'])    # To mount the repositories
-	        
+        os.system("export PATH=${PATH}:/usr/bin:/sbin; cvmfs_config reload")
+	os.system("export PATH=${PATH}:/usr/bin:/sbin; cvmfs_config probe")
+	#subprocess.check_call([SERVICE_cmd, 'cvmfs', 'restart'])
+        #subprocess.check_call([SERVICE_cmd, 'cvmfs', 'probe'])    # To mount the repositories
+	       
